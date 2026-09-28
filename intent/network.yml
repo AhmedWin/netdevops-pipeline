@@ -1,0 +1,37 @@
+# ============================================================
+# SOURCE OF TRUTH
+# This file describes the intended network. Nothing else does.
+# Device configs are generated from it - never edited by hand.
+# ============================================================
+
+defaults:
+  # Address family / protocol settings shared by every device
+  ebgp_requires_policy: false   # lab shortcut; see README
+
+devices:
+  r1:
+    asn: 65001
+    loopback: 10.0.0.1/32
+  r2:
+    asn: 65002
+    loopback: 10.0.0.2/32
+  r3:
+    asn: 65003
+    loopback: 10.0.0.3/32
+
+# Point-to-point links.
+# Declare the link ONCE. The renderer derives, for both ends:
+#   - the interface IP out of the /31 subnet (first host = a, second = b)
+#   - the eBGP neighbor statement pointing at the far end
+links:
+  - a: {device: r1, interface: eth1}
+    b: {device: r2, interface: eth1}
+    subnet: 10.1.12.0/31
+
+  - a: {device: r1, interface: eth2}
+    b: {device: r3, interface: eth1}
+    subnet: 10.1.13.0/31
+
+  - a: {device: r2, interface: eth2}
+    b: {device: r3, interface: eth2}
+    subnet: 10.1.23.0/31

@@ -1,0 +1,35 @@
+{# ============================================================
+   FRR config template.
+   Rendered once per device by scripts/render.py.
+   Variables available: name, asn, loopback, interfaces, neighbors, defaults
+   ============================================================ #}
+! ------------------------------------------------------------
+! GENERATED FILE - DO NOT EDIT
+! Source of truth: intent/network.yml
+! Regenerate with: python3 scripts/render.py
+! ------------------------------------------------------------
+hostname {{ name }}
+!
+interface lo
+ ip address {{ loopback }}
+!
+{% for intf in interfaces %}
+interface {{ intf.name }}
+ description to-{{ intf.peer }}
+ ip address {{ intf.address }}
+!
+{% endfor %}
+router bgp {{ asn }}
+ bgp router-id {{ loopback | replace('/32', '') }}
+{% if not defaults.ebgp_requires_policy %}
+ no bgp ebgp-requires-policy
+{% endif %}
+{% for nbr in neighbors %}
+ neighbor {{ nbr.address }} remote-as {{ nbr.asn }}
+ neighbor {{ nbr.address }} description {{ nbr.peer }}
+{% endfor %}
+ !
+ address-family ipv4 unicast
+  network {{ loopback }}
+ exit-address-family
+!
