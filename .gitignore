@@ -1,0 +1,9 @@
+# containerlab runtime artifacts
+clab-*/
+.clab-*
+*.bak
+
+# Python
+__pycache__/
+.venv/
+.pytest_cache/

@@ -1,0 +1,29 @@
+# NetDevOps lab: 3 FRR routers in a triangle, eBGP between each pair
+name: netdevops
+
+topology:
+  defaults:
+    kind: linux
+    image: quay.io/frrouting/frr:10.2.1
+
+  nodes:
+    r1:
+      binds:
+        - ../configs/daemons:/etc/frr/daemons
+        - ../configs/vtysh.conf:/etc/frr/vtysh.conf
+        - ../configs/r1/frr.conf:/etc/frr/frr.conf
+    r2:
+      binds:
+        - ../configs/daemons:/etc/frr/daemons
+        - ../configs/vtysh.conf:/etc/frr/vtysh.conf
+        - ../configs/r2/frr.conf:/etc/frr/frr.conf
+    r3:
+      binds:
+        - ../configs/daemons:/etc/frr/daemons
+        - ../configs/vtysh.conf:/etc/frr/vtysh.conf
+        - ../configs/r3/frr.conf:/etc/frr/frr.conf
+
+  links:
+    - endpoints: ["r1:eth1", "r2:eth1"]   # 10.1.12.0/31
+    - endpoints: ["r1:eth2", "r3:eth1"]   # 10.1.13.0/31
+    - endpoints: ["r2:eth2", "r3:eth2"]   # 10.1.23.0/31
