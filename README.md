@@ -10,9 +10,9 @@ tests that run against a real (virtual) network on every proposed change.
 
 - [x] **Block 1** — Lab topology: 3 FRR routers, eBGP triangle, containerlab
 - [x] **Block 2** — Source of truth + config generation (Jinja2)
-- [ ] Block 3 — Pre-deployment validation
-- [ ] Block 4 — Automated network tests
-- [ ] Block 5 — GitHub Actions pipeline
+- [x] **Block 3** — Automated network tests (pytest, against the running lab)
+- [ ] Block 4 — GitHub Actions pipeline
+- [ ] Block 5 — Pre-deployment validation (Batfish)
 - [ ] Block 6 — PR reporting + config drift detection
 
 ## The topology
@@ -69,10 +69,33 @@ python3 scripts/render.py --check
 sudo containerlab deploy  -t lab/topology.clab.yml
 sudo containerlab destroy -t lab/topology.clab.yml
 
-# Verify
+# Verify by hand
 docker exec clab-netdevops-r1 vtysh -c "show bgp summary"
 docker exec clab-netdevops-r1 ping -c 3 -I 10.0.0.1 10.0.0.3
+
+# Or verify properly
+pip install -r requirements-dev.txt
+pytest
 ```
+
+## What the tests check
+
+`pytest` runs against the **running lab**, not the config files. Every
+expectation is derived from `intent/network.yml`, so adding a device to
+the intent adds its tests automatically.
+
+| Test | What it would catch |
+|---|---|
+| `test_bgp_session_is_established` | A peering that never came up, or came up to the wrong AS |
+| `test_loopback_is_learned_via_bgp` | A prefix that is not being advertised or accepted |
+| `test_direct_link_is_the_preferred_path` | Traffic silently detouring - the change "works", but not the way it was meant to |
+| `test_loopback_is_reachable` | A route in the table that does not actually forward |
+| `test_traffic_reroutes_when_a_link_fails` | A topology with no real redundancy |
+
+The last one shuts a real interface, waits for BGP to withdraw the
+direct path, proves traffic still flows the long way round, and then
+restores the link. A suite that only ever proves "everything is up"
+says nothing about what happens at 3am.
 
 ## Layout
 
