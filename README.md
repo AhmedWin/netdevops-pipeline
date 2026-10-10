@@ -1,5 +1,7 @@
 # NetDevOps Pipeline — Network Changes as Code
 
+[![network](https://github.com/AhmedWin/netdevops-pipeline/actions/workflows/network.yml/badge.svg)](https://github.com/AhmedWin/netdevops-pipeline/actions/workflows/network.yml)
+
 **No network change reaches a device unless it passes a pipeline first.**
 
 A working demonstration of applying software delivery practice to network
@@ -11,7 +13,7 @@ tests that run against a real (virtual) network on every proposed change.
 - [x] **Block 1** — Lab topology: 3 FRR routers, eBGP triangle, containerlab
 - [x] **Block 2** — Source of truth + config generation (Jinja2)
 - [x] **Block 3** — Automated network tests (pytest, against the running lab)
-- [ ] Block 4 — GitHub Actions pipeline
+- [x] **Block 4** — GitHub Actions pipeline (every change verified automatically)
 - [ ] Block 5 — Pre-deployment validation (Batfish)
 - [ ] Block 6 — PR reporting + config drift detection
 
@@ -52,6 +54,23 @@ From that single declaration the renderer derives, for both ends: the
 interface address out of the /31, the interface description, and the eBGP
 neighbor statement pointing at the far side with the correct remote AS.
 Adding a device or a link means editing intent, not six config files.
+
+## How a change gets merged
+
+Nothing reaches a device because someone looked at it and thought it was
+fine. Every proposed change opens a pull request, and GitHub Actions:
+
+1. **Checks the configs match the intent** — fails if anyone hand-edited a
+   generated file
+2. **Builds the whole topology from scratch** on a clean runner
+3. **Runs all 25 network tests** against that live network
+4. **Tears the lab down** whether it passed or not
+
+If any step fails the pull request is red and cannot be merged. On a
+failure the job also dumps BGP and routing state from every device, so a
+red X comes with the evidence rather than just a verdict.
+
+The workflow is in [`.github/workflows/network.yml`](.github/workflows/network.yml).
 
 ## Usage
 

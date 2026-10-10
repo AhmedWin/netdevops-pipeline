@@ -1,0 +1,78 @@
+name: network
+
+# Every proposed change to the network runs through this.
+# If any step fails, the pull request cannot be merged.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: verify the change
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      # 1. Nobody hand-edited a generated config.
+      - name: Configs match the source of truth
+        run: python3 scripts/render.py --check
+
+      # 2. Build a disposable copy of the network.
+      - name: Install containerlab
+        run: bash -c "$(curl -sL https://get.containerlab.dev)" -- -v 0.79.0
+
+      - name: Deploy the lab
+        run: sudo containerlab deploy -t lab/topology.clab.yml
+
+      # 3. Test it. This is the gate.
+      - name: Run network tests
+        run: python3 -m pytest --junitxml=report.xml
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Network verification"
+            echo ""
+            echo "| Check | Meaning |"
+            echo "|---|---|"
+            echo "| Configs match intent | No device config was edited by hand |"
+            echo "| Lab deployed | The topology builds from scratch |"
+            echo "| Tests passed | Sessions, routes, reachability and failover behave |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # 4. When something fails, say why - a red X with no detail is useless.
+      - name: Collect device state on failure
+        if: failure()
+        run: |
+          for r in r1 r2 r3; do
+            echo "::group::$r"
+            docker exec "clab-netdevops-$r" vtysh -c "show bgp summary" || true
+            docker exec "clab-netdevops-$r" vtysh -c "show ip route" || true
+            docker exec "clab-netdevops-$r" vtysh -c "show interface brief" || true
+            echo "::endgroup::"
+          done
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: report.xml
+          if-no-files-found: ignore
+
+      - name: Tear down the lab
+        if: always()
+        run: sudo containerlab destroy -t lab/topology.clab.yml --cleanup || true
