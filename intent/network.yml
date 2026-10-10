@@ -30,7 +30,7 @@ links:
 
   - a: {device: r1, interface: eth2}
     b: {device: r3, interface: eth1}
-    subnet: 10.1.13.0/31
+    subnet: 10.1.12.0/31
 
   - a: {device: r2, interface: eth2}
     b: {device: r3, interface: eth2}
