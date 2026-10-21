@@ -14,7 +14,7 @@ tests that run against a real (virtual) network on every proposed change.
 - [x] **Block 2** — Source of truth + config generation (Jinja2)
 - [x] **Block 3** — Automated network tests (pytest, against the running lab)
 - [x] **Block 4** — GitHub Actions pipeline (every change verified automatically)
-- [ ] Block 5 — Pre-deployment validation (Batfish)
+- [x] **Block 5** — Validate the intent before anything is built
 - [ ] Block 6 — PR reporting + config drift detection
 
 ## The topology
@@ -58,13 +58,16 @@ Adding a device or a link means editing intent, not six config files.
 ## How a change gets merged
 
 Nothing reaches a device because someone looked at it and thought it was
-fine. Every proposed change opens a pull request, and GitHub Actions:
+fine. Every proposed change opens a pull request, and GitHub Actions runs
+these in order — cheapest first, so a bad change fails fast:
 
-1. **Checks the configs match the intent** — fails if anyone hand-edited a
+1. **Validates the intent** (~0.1s) — addressing, ASNs, interfaces and
+   topology consistency, with no network built at all
+2. **Checks the configs match the intent** — fails if anyone hand-edited a
    generated file
-2. **Builds the whole topology from scratch** on a clean runner
-3. **Runs all 25 network tests** against that live network
-4. **Tears the lab down** whether it passed or not
+3. **Builds the whole topology from scratch** on a clean runner
+4. **Runs all 25 network tests** against that live network
+5. **Tears the lab down** whether it passed or not
 
 If any step fails the pull request is red and cannot be merged. On a
 failure the job also dumps BGP and routing state from every device, so a
@@ -77,6 +80,9 @@ The workflow is in [`.github/workflows/network.yml`](.github/workflows/network.y
 ```bash
 # Install dependencies
 pip install -r requirements.txt
+
+# Check the design is sound before building anything
+python3 scripts/validate.py
 
 # Generate device configs from intent
 python3 scripts/render.py
@@ -96,6 +102,26 @@ docker exec clab-netdevops-r1 ping -c 3 -I 10.0.0.1 10.0.0.3
 pip install -r requirements-dev.txt
 pytest
 ```
+
+## What validation catches
+
+`scripts/validate.py` reads `intent/network.yml` and answers one question:
+is this design internally consistent? It runs in about a tenth of a second
+and builds nothing.
+
+| Check | Catches |
+|---|---|
+| `references` | A link pointing at a device that does not exist, or a device linked to itself |
+| `addressing` | A reused or overlapping link subnet, or a prefix that is not point-to-point |
+| `interfaces` | The same interface assigned to two different links |
+| `loopbacks` | Duplicate loopbacks, or a loopback that falls inside a link subnet |
+| `asns` | A missing, out-of-range, or shared AS number |
+| `connectivity` | A device with no links, which would be unreachable |
+| `topology` | The lab topology file drifting out of step with the intent |
+
+The duplicate-subnet bug that the full pipeline caught in 3 minutes is
+caught here in 0.08 seconds. Same bug, no routers, no BGP, no waiting.
+That ordering - cheapest check first - is the point.
 
 ## What the tests check
 
@@ -122,6 +148,7 @@ says nothing about what happens at 3am.
 |---|---|
 | `intent/network.yml` | Source of truth — the only file edited by hand |
 | `templates/frr.conf.j2` | Jinja2 template for FRR device config |
+| `scripts/validate.py` | Checks the intent is internally consistent |
 | `scripts/render.py` | Renders intent into device configs |
 | `configs/` | **Generated** device configs |
 | `lab/topology.clab.yml` | containerlab topology definition |

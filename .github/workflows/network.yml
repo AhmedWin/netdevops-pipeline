@@ -25,18 +25,22 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
-      # 1. Nobody hand-edited a generated config.
+      # 1. Is the design itself sound? Costs 0.1s, needs no network.
+      - name: Validate the intent
+        run: python3 scripts/validate.py
+
+      # 2. Nobody hand-edited a generated config.
       - name: Configs match the source of truth
         run: python3 scripts/render.py --check
 
-      # 2. Build a disposable copy of the network.
+      # 3. Build a disposable copy of the network.
       - name: Install containerlab
         run: bash -c "$(curl -sL https://get.containerlab.dev)" -- -v 0.79.0
 
       - name: Deploy the lab
         run: sudo containerlab deploy -t lab/topology.clab.yml
 
-      # 3. Test it. This is the gate.
+      # 4. Test it. This is the gate.
       - name: Run network tests
         run: python3 -m pytest --junitxml=report.xml
 
@@ -48,12 +52,13 @@ jobs:
             echo ""
             echo "| Check | Meaning |"
             echo "|---|---|"
+            echo "| Intent valid | Addressing, ASNs and topology are internally consistent |"
             echo "| Configs match intent | No device config was edited by hand |"
             echo "| Lab deployed | The topology builds from scratch |"
             echo "| Tests passed | Sessions, routes, reachability and failover behave |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # 4. When something fails, say why - a red X with no detail is useless.
+      # 5. When something fails, say why - a red X with no detail is useless.
       - name: Collect device state on failure
         if: failure()
         run: |
