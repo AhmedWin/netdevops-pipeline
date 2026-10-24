@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NetDevOps Portal</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%234493f8'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div id="login" class="gate hidden">
+  <form class="card gate-card" id="login-form">
+    <h1>NetDevOps Portal</h1>
+    <p class="muted">Sign in to propose a network change.</p>
+    <label for="token">Access token</label>
+    <input id="token" type="password" autocomplete="current-password" required>
+    <button type="submit">Sign in</button>
+    <p class="error hidden" id="login-error"></p>
+  </form>
+</div>
+
+<div id="app" class="hidden">
+
+  <header>
+    <div class="brand">
+      <span class="dot"></span>
+      <h1>NetDevOps Portal</h1>
+    </div>
+    <div class="header-state">
+      <span id="validity" class="pill"></span>
+      <span id="counts" class="muted small"></span>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-view="topology">Topology</button>
+    <button class="tab" data-view="devices">Devices</button>
+    <button class="tab" data-view="propose">Propose change</button>
+  </nav>
+
+  <main>
+
+    <!-- ---------------------------------------------------------- -->
+    <section id="view-topology" class="view">
+      <div class="card">
+        <h2>Current network</h2>
+        <p class="muted">Drawn from <code>intent/network.yml</code> — the single file that describes this network.</p>
+        <div id="diagram"></div>
+      </div>
+      <div class="card">
+        <h2>Validation</h2>
+        <div id="checks" class="checks"></div>
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------------- -->
+    <section id="view-devices" class="view hidden">
+      <div class="card">
+        <h2>Devices</h2>
+        <div id="device-list"></div>
+      </div>
+      <div class="card">
+        <h2>Links</h2>
+        <table class="grid" id="link-table">
+          <thead><tr><th>A</th><th>B</th><th>Subnet</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------------- -->
+    <section id="view-propose" class="view hidden">
+
+      <div class="card">
+        <h2>Propose a change</h2>
+        <p class="muted">
+          Nothing here touches a device. A valid change opens a pull request,
+          which the pipeline then builds and tests before anyone can merge it.
+        </p>
+
+        <div class="change-kinds">
+          <button class="kind active" data-kind="link">Add a link</button>
+          <button class="kind" data-kind="device">Add a device</button>
+          <button class="kind" data-kind="raw">Edit the file directly</button>
+        </div>
+
+        <!-- add link -->
+        <form id="form-link" class="change-form">
+          <div class="row">
+            <div class="field">
+              <label>From device</label>
+              <select id="link-a-device"></select>
+            </div>
+            <div class="field">
+              <label>Interface</label>
+              <input id="link-a-intf" placeholder="eth3" required>
+            </div>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label>To device</label>
+              <select id="link-b-device"></select>
+            </div>
+            <div class="field">
+              <label>Interface</label>
+              <input id="link-b-intf" placeholder="eth3" required>
+            </div>
+          </div>
+          <div class="field">
+            <label>Subnet <span class="muted small">&mdash; point-to-point, /31 or /30</span></label>
+            <input id="link-subnet" placeholder="10.1.14.0/31" required>
+          </div>
+        </form>
+
+        <!-- add device -->
+        <form id="form-device" class="change-form hidden">
+          <div class="row">
+            <div class="field">
+              <label>Name</label>
+              <input id="dev-name" placeholder="r4" required>
+            </div>
+            <div class="field">
+              <label>AS number</label>
+              <input id="dev-asn" type="number" placeholder="65004" required>
+            </div>
+          </div>
+          <div class="field">
+            <label>Loopback</label>
+            <input id="dev-loopback" placeholder="10.0.0.4/32" required>
+          </div>
+          <p class="muted small">
+            A device with no links is rejected by validation, so add a link to it next.
+          </p>
+        </form>
+
+        <!-- raw -->
+        <form id="form-raw" class="change-form hidden">
+          <div class="field">
+            <label>intent/network.yml</label>
+            <textarea id="raw-yaml" spellcheck="false" rows="18"></textarea>
+          </div>
+        </form>
+
+        <div class="actions">
+          <button id="apply" type="button">Check this change</button>
+          <button id="reset" type="button" class="ghost">Reset</button>
+        </div>
+      </div>
+
+      <div class="card" id="result-card">
+        <h2>Result</h2>
+        <div id="result" class="muted">Make a change above, then check it.</div>
+
+        <div id="diff-area" class="hidden">
+          <h3>Files this change would alter</h3>
+          <div id="diffs"></div>
+        </div>
+
+        <div id="submit-area" class="hidden">
+          <div class="field">
+            <label>Title</label>
+            <input id="pr-title" placeholder="Add link between r1 and r4">
+          </div>
+          <div class="field">
+            <label>Why this change <span class="muted small">&mdash; reviewers read this</span></label>
+            <textarea id="pr-body" rows="3" placeholder="Capacity for the new rack."></textarea>
+          </div>
+          <button id="submit" type="button" class="primary">Submit for review</button>
+          <p class="muted small" id="submit-note"></p>
+        </div>
+      </div>
+
+    </section>
+  </main>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

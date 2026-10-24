@@ -1,0 +1,27 @@
+{# Generated containerlab topology. The device list and wiring come from
+   intent/network.yml, so the lab and the design cannot drift apart. #}
+# ------------------------------------------------------------
+# GENERATED FILE - DO NOT EDIT
+# Source of truth: intent/network.yml
+# Regenerate with: python3 scripts/render.py
+# ------------------------------------------------------------
+name: {{ lab.name }}
+
+topology:
+  defaults:
+    kind: linux
+    image: {{ lab.image }}
+
+  nodes:
+{% for name in devices %}
+    {{ name }}:
+      binds:
+        - ../configs/daemons:/etc/frr/daemons
+        - ../configs/vtysh.conf:/etc/frr/vtysh.conf
+        - ../configs/{{ name }}/frr.conf:/etc/frr/frr.conf
+{% endfor %}
+
+  links:
+{% for link in links %}
+    - endpoints: ["{{ link.a.device }}:{{ link.a.interface }}", "{{ link.b.device }}:{{ link.b.interface }}"]   # {{ link.subnet }}
+{% endfor %}

@@ -1,0 +1,17 @@
+services:
+  portal:
+    build:
+      context: ..
+      dockerfile: portal/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      # Required for colleagues to reach it. Without this the portal is
+      # open to anyone who can reach the port.
+      PORTAL_TOKEN: ${PORTAL_TOKEN:?set PORTAL_TOKEN before starting}
+      # Needed for the Submit button. A fine-grained token with
+      # Contents and Pull requests write on this repository only.
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_REPO: ${GITHUB_REPO:-}
+      GITHUB_BASE_BRANCH: ${GITHUB_BASE_BRANCH:-main}
+    restart: unless-stopped
