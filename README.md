@@ -15,7 +15,8 @@ tests that run against a real (virtual) network on every proposed change.
 - [x] **Block 3** — Automated network tests (pytest, against the running lab)
 - [x] **Block 4** — GitHub Actions pipeline (every change verified automatically)
 - [x] **Block 5** — Validate the intent before anything is built
-- [ ] Block 6 — PR reporting + config drift detection
+- [x] **Block 6** — A web portal for proposing changes
+- [ ] Block 7 — Config drift detection against live devices
 
 ## The topology
 
@@ -102,6 +103,59 @@ docker exec clab-netdevops-r1 ping -c 3 -I 10.0.0.1 10.0.0.3
 pip install -r requirements-dev.txt
 pytest
 ```
+
+## The portal
+
+Everything above assumes you are comfortable with git, YAML and a
+terminal. Most people who need to request a network change are not, and
+that is the real barrier to this approach being used by a team.
+
+`portal/` is a small web application that closes that gap:
+
+```bash
+pip install -r portal/requirements.txt
+uvicorn portal.app:app --reload --port 8080
+# then open http://localhost:8080
+```
+
+It shows the current network as a diagram, lets someone describe a change
+through a form, validates it, shows exactly which generated files would
+change, and - if it is valid - opens a pull request.
+
+**It calls the same `validate.py` and `render.py` the pipeline calls.**
+That is the single most important design decision in it. A portal with
+its own copy of the rules could approve something the pipeline rejects,
+and the whole premise of a single source of truth would be gone.
+
+It is deliberately not able to apply anything to a device, merge
+anything, or skip review. A change proposed here is an ordinary pull
+request, verified by the ordinary pipeline.
+
+Edits are applied to `intent/network.yml` **as text**, not by parsing and
+re-serialising it. Round-tripping through a YAML library silently strips
+every comment in the file, and that file is written to be read by people.
+Two tests exist purely to keep that true.
+
+### Running it for a team
+
+```bash
+cp portal/.env.example portal/.env     # then fill it in
+cd portal && docker compose up --build
+```
+
+| Variable | Purpose |
+|---|---|
+| `PORTAL_TOKEN` | Shared token required to sign in. Without it the portal is open to anyone who can reach the port. |
+| `GITHUB_TOKEN` | Fine-grained token with Contents and Pull requests write, on this repository only. Needed for Submit. |
+| `GITHUB_REPO` | `owner/name` of the repository to open pull requests against. |
+
+**About that auth, honestly:** a single shared token is enough to keep a
+read-write tool off an open network. It is not real authentication.
+There are no individual accounts, so a pull request says it came from the
+portal rather than from a named person, and revoking access for one
+person means rotating the token for everyone. Anywhere that matters, this
+should sit behind SSO and the pull request should carry the real
+requester's identity.
 
 ## What validation catches
 

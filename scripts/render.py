@@ -21,6 +21,9 @@ REPO = Path(__file__).resolve().parent.parent
 INTENT = REPO / "intent" / "network.yml"
 TEMPLATES = REPO / "templates"
 OUTPUT = REPO / "configs"
+TOPOLOGY = REPO / "lab" / "topology.clab.yml"
+
+LAB_DEFAULTS = {"name": "netdevops", "image": "quay.io/frrouting/frr:10.2.1"}
 
 
 def load_intent(path: Path) -> dict:
@@ -90,19 +93,51 @@ def build_device_models(intent: dict) -> dict:
     return models
 
 
-def render(models: dict, defaults: dict) -> dict:
-    env = Environment(
+def _environment() -> Environment:
+    return Environment(
         loader=FileSystemLoader(TEMPLATES),
         undefined=StrictUndefined,
         trim_blocks=True,
         lstrip_blocks=True,
         keep_trailing_newline=True,
     )
-    template = env.get_template("frr.conf.j2")
+
+
+def render(models: dict, defaults: dict) -> dict:
+    template = _environment().get_template("frr.conf.j2")
     return {
         name: template.render(defaults=defaults, **model)
         for name, model in models.items()
     }
+
+
+def render_topology(intent: dict) -> str:
+    """Generate the containerlab topology from the same intent.
+
+    The lab used to be described by hand in its own file, which made it a
+    second source of truth that could drift away from the design. It is
+    generated now, for the same reason the device configs are.
+    """
+    lab = {**LAB_DEFAULTS, **(intent.get("lab") or {})}
+    template = _environment().get_template("topology.clab.yml.j2")
+    return template.render(
+        lab=lab,
+        devices=sorted(intent.get("devices", {})),
+        links=intent.get("links", []),
+    )
+
+
+def render_all(intent: dict) -> dict:
+    """Every file generated from the intent, as {repo-relative path: text}.
+
+    This is what the portal calls, so the UI and the pipeline can never
+    disagree about what a change produces.
+    """
+    models = build_device_models(intent)
+    configs = render(models, intent.get("defaults", {}))
+    files = {f"configs/{name}/frr.conf": text for name, text in configs.items()}
+    files["lab/topology.clab.yml"] = render_topology(intent)
+    return files
 
 
 def main() -> int:
@@ -115,33 +150,34 @@ def main() -> int:
     args = parser.parse_args()
 
     intent = load_intent(INTENT)
-    models = build_device_models(intent)
-    rendered = render(models, intent.get("defaults", {}))
+    rendered = render_all(intent)
 
     drifted = []
-    for name, text in sorted(rendered.items()):
-        target = OUTPUT / name / "frr.conf"
+    for relative, text in sorted(rendered.items()):
+        target = REPO / relative
         current = target.read_text() if target.exists() else None
 
         if args.check:
             if current != text:
-                drifted.append(name)
+                drifted.append(relative)
             continue
 
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text)
         status = "unchanged" if current == text else "written"
-        print(f"  {name:<4} {status:>9}  {target.relative_to(REPO)}")
+        print(f"  {status:>9}  {relative}")
 
     if args.check:
         if drifted:
-            print("Configs do not match intent/network.yml: " + ", ".join(drifted))
+            print("Generated files do not match intent/network.yml:")
+            for relative in drifted:
+                print(f"  {relative}")
             print("Run: python3 scripts/render.py")
             return 1
-        print(f"All {len(rendered)} configs match intent/network.yml")
+        print(f"All {len(rendered)} generated files match intent/network.yml")
         return 0
 
-    print(f"Rendered {len(rendered)} device configs from {INTENT.relative_to(REPO)}")
+    print(f"Rendered {len(rendered)} files from {INTENT.relative_to(REPO)}")
     return 0
 
 

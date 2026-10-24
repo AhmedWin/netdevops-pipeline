@@ -48,6 +48,15 @@ class Report:
     def ok(self):
         return not self.errors
 
+    def to_dict(self):
+        """JSON-friendly form, for the portal API."""
+        return {
+            "ok": self.ok,
+            "checks": [{"name": n, "summary": s} for n, s in self.checks],
+            "errors": [{"check": n, "message": m} for n, m in self.errors],
+            "warnings": [{"check": n, "message": m} for n, m in self.warnings],
+        }
+
 
 # ---------------------------------------------------------------------
 # Checks
@@ -217,18 +226,19 @@ def check_connectivity(intent, report):
     report.record("connectivity", f"{len(devices & attached)} devices attached")
 
 
-def check_topology_matches_intent(intent, report):
-    """The containerlab topology is a second description of the same network.
+def check_topology_matches_intent(intent, report, topology_text=None):
+    """The lab topology is generated from the intent - verify it still matches.
 
-    Two files describing one thing is exactly how drift starts, so they
-    are compared here rather than discovered at deploy time.
+    This catches the case where the intent changed but nobody re-ran the
+    renderer, which would otherwise only surface when the lab is built.
     """
-    if not TOPOLOGY.exists():
-        report.warn("topology", f"{TOPOLOGY.name} not found - skipping")
-        return
+    if topology_text is None:
+        if not TOPOLOGY.exists():
+            report.warn("topology", f"{TOPOLOGY.name} not found - skipping")
+            return
+        topology_text = TOPOLOGY.read_text()
 
-    with TOPOLOGY.open() as fh:
-        topo = yaml.safe_load(fh) or {}
+    topo = yaml.safe_load(topology_text) or {}
 
     topo_nodes = set((topo.get("topology", {}).get("nodes") or {}))
     intent_nodes = set(intent.get("devices", {}))
@@ -271,8 +281,21 @@ CHECKS = [
     check_loopbacks,
     check_asns,
     check_connectivity,
-    check_topology_matches_intent,
 ]
+
+
+def validate_intent(intent: dict, topology_text: str | None = None) -> Report:
+    """Run every check against an intent and return the collected report.
+
+    The portal calls this with a *proposed* intent that has not been
+    written anywhere, which is why nothing here touches the filesystem
+    except the optional topology comparison.
+    """
+    report = Report()
+    for check in CHECKS:
+        check(intent, report)
+    check_topology_matches_intent(intent, report, topology_text)
+    return report
 
 
 # ---------------------------------------------------------------------
@@ -285,9 +308,7 @@ def main():
     with INTENT.open() as fh:
         intent = yaml.safe_load(fh) or {}
 
-    report = Report()
-    for check in CHECKS:
-        check(intent, report)
+    report = validate_intent(intent)
 
     print(f"Validating {INTENT.relative_to(REPO)}\n")
     for name, summary in report.checks:
