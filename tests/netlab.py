@@ -133,24 +133,59 @@ def session_states(devices: dict = DEVICES) -> dict:
     return states
 
 
+def unlearned_prefixes(devices: dict = DEVICES) -> dict:
+    """Which loopbacks each device has NOT yet learned through BGP.
+
+    'Established' only means the session came up. It says nothing about
+    whether the UPDATE messages have been processed and the routes
+    installed, and there is a real window between the two. Tests that
+    run inside that window fail for a reason that has nothing to do with
+    the change being tested.
+    """
+    missing = {}
+    for name in devices:
+        for other, model in devices.items():
+            if other == name:
+                continue
+            prefix = model["loopback"]
+            try:
+                entries = routes_for(name, prefix)
+            except DeviceError as exc:
+                missing[f"{name} -> {other} ({prefix})"] = f"lookup failed: {exc}"
+                continue
+            if not any(entry.get("protocol") == "bgp" for entry in entries):
+                seen = sorted({entry.get("protocol") for entry in entries}) or ["nothing"]
+                missing[f"{name} -> {other} ({prefix})"] = f"no BGP route (saw: {', '.join(map(str, seen))})"
+    return missing
+
+
 def wait_for_convergence(devices: dict = DEVICES, timeout: int = CONVERGENCE_TIMEOUT,
                          interval: float = 2.0) -> dict:
-    """Block until every intended BGP session is Established.
+    """Block until the network has actually converged.
 
-    Network tests fail for boring reasons if they run before the control
-    plane has settled, so every test depends on this.
+    That means two things, not one: every intended session is
+    Established, AND every device has installed a BGP route to every
+    other device's loopback. Waiting only on session state returns too
+    early - the sessions come up a moment before the routes land, which
+    is invisible when you deploy a lab and run the tests minutes later,
+    and perfectly visible in CI where they run seconds apart.
     """
     deadline = time.monotonic() + timeout
-    states = {}
+    states, missing = {}, {}
     while True:
         states = session_states(devices)
-        if all(state == "Established" for state in states.values()):
+        sessions_up = all(state == "Established" for state in states.values())
+
+        missing = unlearned_prefixes(devices) if sessions_up else {}
+        if sessions_up and not missing:
             return states
+
         if time.monotonic() >= deadline:
             detail = "\n".join(f"    {k}: {v}" for k, v in sorted(states.items()))
-            raise DeviceError(
-                f"BGP did not converge within {timeout}s:\n{detail}"
-            )
+            if missing:
+                detail += "\n  sessions are up, but these routes never arrived:\n"
+                detail += "\n".join(f"    {k}: {v}" for k, v in sorted(missing.items()))
+            raise DeviceError(f"Network did not converge within {timeout}s:\n{detail}")
         time.sleep(interval)
 
 
