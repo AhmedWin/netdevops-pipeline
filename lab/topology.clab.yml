@@ -1,4 +1,8 @@
-# NetDevOps lab: 3 FRR routers in a triangle, eBGP between each pair
+# ------------------------------------------------------------
+# GENERATED FILE - DO NOT EDIT
+# Source of truth: intent/network.yml
+# Regenerate with: python3 scripts/render.py
+# ------------------------------------------------------------
 name: netdevops
 
 topology:

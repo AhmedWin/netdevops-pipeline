@@ -7,3 +7,5 @@ clab-*/
 __pycache__/
 .venv/
 .pytest_cache/
+
+portal/.env

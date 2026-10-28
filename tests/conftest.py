@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from netlab import (
@@ -23,16 +25,26 @@ def devices():
 
 @pytest.fixture(scope="session")
 def lab_up():
-    """Stop early, with a useful message, if the lab is not running."""
+    """Make sure the lab is actually running before asserting anything.
+
+    In CI a missing lab is a failure - the whole point is that the
+    pipeline builds one. On a developer's machine it is just as likely
+    that they are working on something else entirely, so these tests are
+    skipped rather than killing the run, which would take the portal
+    tests down with them.
+    """
     missing = [name for name in DEVICES if not container_running(name)]
-    if missing:
-        names = ", ".join(container(n) for n in missing)
-        pytest.exit(
-            f"Lab is not running - missing container(s): {names}\n"
-            f"Start it with: sudo containerlab deploy -t lab/topology.clab.yml",
-            returncode=2,
-        )
-    return True
+    if not missing:
+        return True
+
+    names = ", ".join(container(n) for n in missing)
+    message = (
+        f"Lab is not running - missing container(s): {names}. "
+        f"Start it with: sudo containerlab deploy -t lab/topology.clab.yml"
+    )
+    if os.environ.get("CI"):
+        pytest.fail(message, pytrace=False)
+    pytest.skip(message)
 
 
 @pytest.fixture(scope="session")
