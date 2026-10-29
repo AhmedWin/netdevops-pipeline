@@ -104,6 +104,56 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
+## Running it on Jenkins
+
+GitHub Actions is fine for a public repository, but an on-premise
+pipeline is what most enterprises actually run. The `Jenkinsfile` is the
+same checks in the same order, on a runner you control.
+
+### Agent requirements
+
+containerlab needs Linux and Docker, so on Windows this has to be
+Jenkins **inside WSL**, not the Windows service.
+
+```bash
+# Java and Jenkins
+sudo apt update && sudo apt install -y fontconfig openjdk-21-jre python3-venv
+curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key \
+  | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
+  https://pkg.jenkins.io/debian-stable binary/" \
+  | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
+sudo apt update && sudo apt install -y jenkins
+sudo systemctl enable --now jenkins
+
+# Jenkins needs Docker, and sudo for containerlab only
+sudo usermod -aG docker jenkins
+echo 'jenkins ALL=(root) NOPASSWD: /usr/bin/containerlab' \
+  | sudo tee /etc/sudoers.d/jenkins-containerlab
+sudo chmod 440 /etc/sudoers.d/jenkins-containerlab
+sudo systemctl restart jenkins
+```
+
+The sudo rule is deliberately narrow: `containerlab` and nothing else.
+A CI user with unrestricted root is a far bigger risk than the thing the
+pipeline is protecting against.
+
+### Pipeline job
+
+New Item → Pipeline → Pipeline script from SCM → Git → this repository
+→ Script Path `Jenkinsfile`.
+
+Install the **Pipeline** and **JUnit** plugins if they are not already
+there; the build publishes `report.xml` so test results show per build.
+
+### Why both
+
+The two pipelines run the identical scripts - `validate.py`,
+`render.py`, `pytest`. Nothing is duplicated between them except the
+runner's own syntax. If the two could ever disagree about whether a
+change is acceptable, that would be the same mistake as letting the
+portal keep its own copy of the rules.
+
 ## The portal
 
 Everything above assumes you are comfortable with git, YAML and a
@@ -205,7 +255,9 @@ says nothing about what happens at 3am.
 | `scripts/validate.py` | Checks the intent is internally consistent |
 | `scripts/render.py` | Renders intent into device configs |
 | `configs/` | **Generated** device configs |
-| `lab/topology.clab.yml` | containerlab topology definition |
+| `lab/topology.clab.yml` | **Generated** containerlab topology |
+| `.github/workflows/network.yml` | The pipeline, on GitHub Actions |
+| `Jenkinsfile` | The same pipeline, on Jenkins |
 
 ## Why FRR
 
